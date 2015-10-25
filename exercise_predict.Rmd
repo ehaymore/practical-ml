@@ -1,0 +1,66 @@
+---
+title: "Exercise Prediction"
+author: "ehaymore"
+date: "10/24/2015"
+output: html_document
+---
+
+# Executive Summary
+
+In this analysis, we develop a model to predict whether an exercise has been performed correctly, and if incorrectly which type of incorrectness, based on measurements from accelerometers.
+
+# Introduction
+
+The data for this project came from a study performed in Brazil by Ugulino et. al. and is available at
+[http://groupware.les.inf.puc-rio.br/har]. Six subjects were measured, using accelerometers on the body and the barbell, while lifting weights correctly and incorrectly in five different ways. The goal of this exercise was to use the measurements to predict which of the five ways the barbell was being lifted. The data provide a training set, with classification labels, and a test set without labels.
+
+# Developing the model
+
+We choose to develop a random forest classifier as it seems suited to the task at hand and is easy to work with. It can be compute-intensive to train so we enable parallel processing for eight CPU cores. And as part of our setup we set a random seed for reproducibility, and we load necessary packages including the caret package.
+
+
+```{r, message=FALSE}
+set.seed(1237)
+library(caret)
+library(doMC)
+registerDoMC(8)
+library(randomForest)
+```
+
+We load in the data set as well; noting that some values are "#DIV/0!" we explicitly set these values to NA as part of the loading process. We also force the labels (the classe variable) to be factors. The measurements that contain NA values appear to be ones to exclude from the model -- they aren't provided in the test set -- so we remove them.
+
+
+```{r}
+traind <- read.csv('pml-training.csv', na.strings=c("", "NA", "#DIV/0!"))
+traind$classe <- as.factor(traind$classe)
+traindnna <- traind[,colSums(is.na(traind)) == 0]
+testd <- read.csv('pml-testing.csv', na.strings=c("", "NA", "#DIV/0!"))
+```
+
+We will be estimating the model performance via cross-validation in order to get a better estimate of the out-of-sample error; we select 5-fold as a compromise between model accuracy, running time, and error estimate variance. We set up an appropriate training control for the caret package with 5-fold cross-validation. We note additional measurements to exclude from the model, namely the observation number and the timestamps, which seem irrelevant. We then fit the model and evaluate performance. 
+
+
+```{r, cache=TRUE}
+traincr <- trainControl(method='cv', number=5)
+modFit <- train(classe ~ . - X - raw_timestamp_part_1 - raw_timestamp_part_2 - 
+                            cvtd_timestamp - num_window - new_window,
+                trControl=traincr, data=traindnna, method='rf')
+acc <- max(modFit$results$Accuracy)
+modFit
+```
+
+Using this cross-validation we find that the predicted accuracy of the model against out-of-sample data is `r acc`. We plot its most import features with
+
+```{r}
+varImpPlot(modFit$finalModel)
+```
+
+and the errors versus the number of trees with
+
+```{r}
+plot(modFit$finalModel)
+```
+
+# Summary
+
+We have developed a random forest model that successfully predicts the manner in which a particular exercise is performed with a very high degree of accuracy.
